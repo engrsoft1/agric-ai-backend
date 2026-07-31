@@ -9,8 +9,12 @@ load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
-client = genai.Client(api_key=API_KEY)
+if not API_KEY:
+    raise RuntimeError(
+        "GEMINI_API_KEY environment variable is not set."
+    )
 
+client = genai.Client(api_key=API_KEY)
 
 # --------------------------------------------
 # Analyze Crop Image
@@ -37,17 +41,30 @@ Respond ONLY in valid JSON.
 Use EXACTLY this format:
 
 {
-  "category": "",
-  "name": "",
-  "condition": "",
-  "confidence": "",
-  "severity": "",
-  "cause": "",
-  "symptoms": [],
-  "treatments": [],
-  "prevention": []
+  "category":"",
+  "name":"",
+  "condition":"",
+  "confidence":"",
+  "severity":"",
+  "cause":"",
+  "symptoms":[],
+  "treatments":[],
+  "prevention":[],
+  "timeline":[
+    {
+      "title":"",
+      "description":"",
+      "icon":"medical_services",
+      "color":"green"
+    }
+  ],
+  "recovery":{
+      "time":"",
+      "outlook":"",
+      "recommendations":[],
+      "warnings":[]
+  }
 }
-
 Rules:
 
 category must be one of:
