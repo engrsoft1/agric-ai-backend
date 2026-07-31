@@ -1,83 +1,44 @@
 # ============================================================
-# AgriAI Version 3.0
-# Online Agriculture AI Assistant
-# English | Hausa | Yoruba | Igbo
+# AgriAI Version 3.1.0
+# Cloud AI Engine
 # Powered by Google Gemini
 # ============================================================
 
 import os
-import tempfile
-
-import speech_recognition as sr
-from gtts import gTTS
-from playsound import playsound
-from langdetect import detect
-
-from google import genai
-
-
-
-# ============================================================
-# GEMINI API KEY
-# ============================================================
 
 from dotenv import load_dotenv
+from langdetect import detect
+from google import genai
+
+# ============================================================
+# LOAD ENVIRONMENT VARIABLES
+# ============================================================
 
 load_dotenv()
 
 API_KEY = os.getenv("GEMINI_API_KEY")
 
 if not API_KEY:
-    raise ValueError("GEMINI_API_KEY not found in .env file")
+    raise ValueError("GEMINI_API_KEY not found.")
 
 client = genai.Client(api_key=API_KEY)
+
 # ============================================================
 # MEMORY
 # ============================================================
 
 conversation_history = []
 
-
 # ============================================================
 # SUPPORTED LANGUAGES
 # ============================================================
 
 SUPPORTED_LANGUAGES = {
-
-    "en": {
-        "name": "English",
-        "voice": "en",
-        "speech": "en-US"
-    },
-
-    "ha": {
-        "name": "Hausa",
-        "voice": "ha",
-        "speech": "ha-NG"
-    },
-
-    "yo": {
-        "name": "Yoruba",
-        "voice": "yo",
-        "speech": "yo-NG"
-    },
-
-    "ig": {
-        "name": "Igbo",
-        "voice": "ig",
-        "speech": "ig-NG"
-    }
-
+    "en": "English",
+    "ha": "Hausa",
+    "yo": "Yoruba",
+    "ig": "Igbo",
 }
-
-
-# ============================================================
-# NORMALIZE
-# ============================================================
-
-def normalize_text(text):
-    return text.lower().strip()
-
 
 # ============================================================
 # LANGUAGE DETECTION
@@ -123,113 +84,15 @@ def detect_language(text):
         return "ig"
 
     try:
-
         lang = detect(text)
 
         if lang in SUPPORTED_LANGUAGES:
             return lang
 
-    except:
-
+    except Exception:
         pass
 
     return "en"
-
-
-# ============================================================
-# TEXT TO SPEECH
-# ============================================================
-
-def speak_text(text, language):
-
-    try:
-
-        if language not in SUPPORTED_LANGUAGES:
-            language = "en"
-
-        tts = gTTS(
-            text=text,
-            lang=SUPPORTED_LANGUAGES[language]["voice"]
-        )
-
-        with tempfile.NamedTemporaryFile(
-            delete=False,
-            suffix=".mp3"
-        ) as fp:
-
-            filename = fp.name
-
-        tts.save(filename)
-
-        import threading
-        import time
-
-        def play_audio(file):
-            try:
-                playsound(file)
-            except Exception:
-                pass
-            finally:
-                time.sleep(0.5)
-                if os.path.exists(file):
-                    try:
-                        os.remove(file)
-                    except Exception:
-                        pass
-
-        threading.Thread(
-            target=play_audio,
-            args=(filename,),
-            daemon=True
-        ).start()
-
-    except Exception as e:
-        print("Speech Error:", e)
-        # ============================================================
-# VOICE INPUT
-# ============================================================
-
-def listen_voice():
-
-    recognizer = sr.Recognizer()
-    recognizer.energy_threshold = 300
-    recognizer.dynamic_energy_threshold = True
-    recognizer.pause_threshold = 0.8
-
-    try:
-        with sr.Microphone() as source:
-
-            print("Listening...")
-
-            recognizer.adjust_for_ambient_noise(source, duration=1)
-
-            audio = recognizer.listen(
-                source,
-                timeout=5,
-                phrase_time_limit=10
-            )
-
-    except Exception as e:
-        print("Microphone Error:", e)
-        return ""
-
-    for lang in ["ha", "en", "yo", "ig"]:
-
-        try:
-
-            text = recognizer.recognize_google(
-                audio,
-                language=SUPPORTED_LANGUAGES[lang]["speech"]
-            )
-
-            print(text)
-
-            return text
-
-        except:
-            continue
-
-    return ""
 
 
 # ============================================================
@@ -241,12 +104,11 @@ You are AgriAI.
 
 You are an Agriculture Assistant developed for IITA (I-YOUTH).
 
-Rules
+Rules:
 
 1. Answer ONLY agriculture questions.
 
-2. Agriculture includes
-
+2. Agriculture includes:
 - Crops
 - Livestock
 - Poultry
@@ -262,73 +124,97 @@ Rules
 - Weed control
 - Animal health
 
-3. If a question is NOT agriculture related,
-politely refuse.
+3.  If a user asks about medicine,
+politics,
+sports,
+religion,
+programming,
+relationships,
+history,
+or any non-agricultural topic, 
 
-4. Reply ONLY in the language used
-by the user.
+4.  Politely reply that AgriAI only provides agricultural assistance.
 
-5. Keep answers practical,
-simple and farmer friendly.
+5. Never answer outside agriculture.
 
-6. Never invent facts.
+6. Always respond in the same language used by the user.
+
+7. Keep answers practical,
+simple,
+accurate,
+and farmer-friendly.
+
+8. Never invent facts.
+
+9. When appropriate:
+- Give treatment steps.
+- Give prevention methods.
+- Recommend good farming practices.
 """
 
-
 # ============================================================
-# GET AI RESPONSE
+# AI RESPONSE
 # ============================================================
 
-def get_online_answer(user_input, language=None):
+def get_online_answer(user_input):
 
     global conversation_history
 
-    try:
+    language = detect_language(user_input)
 
-        conversation_history.append(
-            {
-                "role": "user",
-                "text": user_input
-            }
-        )
+    conversation_history.append(
+        {
+            "role": "user",
+            "text": user_input,
+        }
+    )
 
-        history = ""
+    # Keep only last 20 exchanges
+    conversation_history = conversation_history[-20:]
 
-        for item in conversation_history[-6:]:
+    history = ""
 
-            history += f"{item['role']}: {item['text']}\n"
+    for item in conversation_history:
+        history += f"{item['role']}: {item['text']}\n"
 
-        prompt = f"""
+    prompt = f"""
 {SYSTEM_PROMPT}
 
-Conversation
+Conversation History:
 
 {history}
 
-User
+Current User Question:
 
 {user_input}
 """
+
+    try:
 
         response = client.models.generate_content(
             model="gemini-2.5-flash",
             contents=prompt,
         )
 
-        answer = response.text
-           
+        answer = response.text.strip()
 
-    
         conversation_history.append(
             {
                 "role": "assistant",
-                "text": answer
+                "text": answer,
             }
         )
 
-        return answer
+        return {
+            "success": True,
+            "language": language,
+            "answer": answer,
+        }
 
     except Exception as e:
-        return f"AI Error:\n{e}"
 
-
+        return {
+            "success": False,
+            "language": language,
+            "answer": f"The AI service is temporarily unavailable, Please try again later: {e}",
+        }
