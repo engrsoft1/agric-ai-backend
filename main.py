@@ -1,89 +1,99 @@
-from fastapi import UploadFile, File
+from fastapi import FastAPI, UploadFile, File
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 import shutil
 import os
 
+from online_agri_ai import get_online_answer
 from disease_analyzer import analyze_crop_image
-from fastapi import FastAPI
-from pydantic import BaseModel
-from fastapi.middleware.cors import CORSMiddleware
 
-from online_agri_ai import (
-    get_online_answer,
-    detect_language
-)
+# ============================================================
+# FastAPI
+# ============================================================
 
 app = FastAPI(
     title="AgriAI API",
-    version="1.0.0"
+    version="3.1.0"
 )
-UPLOAD_FOLDER = "uploads"
 
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+# ============================================================
+# CORS
+# ============================================================
 
-# Allow Flutter to communicate with the API
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],      # We'll restrict this later
+    allow_origins=["*"],      # Restrict later in production
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
+# ============================================================
+# Upload Folder
+# ============================================================
+
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+
+# ============================================================
+# Models
+# ============================================================
 
 class ChatRequest(BaseModel):
     message: str
 
 
-class ChatResponse(BaseModel):
-    reply: str
-    language: str
-
+# ============================================================
+# Home Endpoint
+# ============================================================
 
 @app.get("/")
 def home():
     return {
-        "message": "Welcome to AgriAI API"
+        "status": "online",
+        "service": "AgriAI API",
+        "version": "3.1.0"
     }
 
 
-@app.post("/chat", response_model=ChatResponse)
-def chat(request: ChatRequest):
+# ============================================================
+# Health Check
+# ============================================================
 
-    language = detect_language(request.message)
+@app.get("/health")
+def health():
+    return {
+        "status": "healthy"
+    }
 
-    answer = get_online_answer(
-        request.message,
-        language
-    )
 
-    return ChatResponse(
-        reply=answer,
-        language=language
-    )
-@app.post("/analyze-image")
-async def analyze_image(file: UploadFile = File(...)):
+# ============================================================
+# AI Chat
+# ============================================================
 
-    # Save uploaded image
-    image_path = os.path.join(
+@app.post("/chat")
+async def chat(request: ChatRequest):
+
+    result = get_online_answer(request.message)
+
+    return result
+
+
+# ============================================================
+# Disease Detection
+# ============================================================
+
+@app.post("/diagnose")
+async def diagnose(file: UploadFile = File(...)):
+
+    filepath = os.path.join(
         UPLOAD_FOLDER,
-        file.filename,
+        file.filename
     )
 
-    with open(image_path, "wb") as buffer:
+    with open(filepath, "wb") as buffer:
         shutil.copyfileobj(file.file, buffer)
 
-    try:
-        # Analyze with Gemini Vision
-        result = analyze_crop_image(image_path)
-        return result
+    result = analyze_crop_image(filepath)
 
-    except Exception as e:
-        return {
-            "success": False,
-            "error": str(e)
-        }
-
-    finally:
-        # Delete uploaded image
-        if os.path.exists(image_path):
-            os.remove(image_path)
+    return result
