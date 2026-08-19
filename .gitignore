@@ -1,32 +1,15 @@
-# Environment / secrets
-.env
-.env.*
-!.env.example
-
-# Python virtual environment
+﻿.env
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
 venv/
 .venv/
 env/
-
-# Python cache
-__pycache__/
-*.py[cod]
-*.class
-
-# Database files
+.env.*
+!.env.example
 *.db
 *.sqlite
 *.sqlite3
-
-# Uploaded/generated files
 uploads/
 products/
-
-# Logs
-*.log
-
-# IDE / OS files
-.vscode/
-.idea/
-.DS_Store
-Thumbs.db
