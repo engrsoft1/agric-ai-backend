@@ -82,6 +82,20 @@ def health():
     return {
         "status": "healthy"
     }
+@app.get("/database-check")
+def database_check():
+    from database import DATABASE_URL
+
+    if DATABASE_URL.startswith("postgresql"):
+        database_type = "PostgreSQL"
+    elif DATABASE_URL.startswith("sqlite"):
+        database_type = "SQLite"
+    else:
+        database_type = "Unknown"
+
+    return {
+        "database": database_type
+    }
 
 
 # ============================================================

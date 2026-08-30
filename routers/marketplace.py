@@ -317,6 +317,58 @@ def get_products(
     }
 
 # ==========================================================
+# GET SELLER'S PRODUCTS
+# ==========================================================
+
+@router.get("/my-products/{owner_id}")
+def get_my_products(
+    owner_id: int,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    # Only allow a seller to view their own products
+    if current_user.id != owner_id:
+        raise HTTPException(
+            status_code=403,
+            detail="You are not allowed to view these products.",
+        )
+
+    products = (
+        db.query(Product)
+        .filter(Product.owner_id == owner_id)
+        .order_by(Product.created_at.desc())
+        .all()
+    )
+
+    product_list = []
+
+    for product in products:
+        product_list.append({
+            "id": product.id,
+            "title": product.title,
+            "description": product.description,
+            "category": product.category,
+            "price": product.price,
+            "quantity": product.quantity,
+            "unit": product.unit,
+            "location": product.location,
+            "phone": product.phone,
+            "whatsapp": product.whatsapp,
+            "status": product.status,
+            "owner_id": product.owner_id,
+            "created_at": product.created_at,
+            "updated_at": product.updated_at,
+
+            "images": [
+                f"/uploads/products/{os.path.basename(image.image_url)}"
+                for image in product.images
+                if image.image_url
+            ],
+        })
+
+    return product_list
+
+# ==========================================================
 # CREATE PRODUCT
 # ==========================================================
 
