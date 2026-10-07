@@ -1,4 +1,5 @@
 from fastapi import Depends
+from fastapi.openapi.utils import get_openapi
 from fastapi import Form
 from sqlalchemy.orm import Session
 from fastapi.staticfiles import StaticFiles
@@ -145,3 +146,44 @@ app.include_router(
 app.include_router(
     admin_router
 )
+app.include_router(
+    admin_router
+)
+# ============================================================
+# CUSTOM OPENAPI SCHEMA
+# Force Swagger UI to render marketplace images as file upload
+# ============================================================
+
+def custom_openapi():
+
+    if app.openapi_schema:
+        return app.openapi_schema
+
+    openapi_schema = get_openapi(
+        title=app.title,
+        version=app.version,
+        description=app.description,
+        routes=app.routes,
+    )
+
+    body_schema = openapi_schema["components"]["schemas"].get(
+        "Body_create_product_marketplace_products_post"
+    )
+
+    if body_schema:
+        images_schema = body_schema.get("properties", {}).get("images")
+
+        if images_schema:
+            images_schema["type"] = "array"
+
+            images_schema["items"] = {
+                "type": "string",
+                "format": "binary"
+            }
+
+    app.openapi_schema = openapi_schema
+
+    return app.openapi_schema
+
+
+app.openapi = custom_openapi

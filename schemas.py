@@ -60,3 +60,14 @@ class BuyerLogin(BaseModel):
     identifier: str  # Email or phone number
 
     password: str
+
+
+# ============================================================
+# ADMIN LOGIN
+# ============================================================
+
+class AdminLogin(BaseModel):
+
+    identifier: str   # Admin email or phone number
+
+    password: str

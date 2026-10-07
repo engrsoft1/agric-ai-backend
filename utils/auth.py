@@ -63,3 +63,24 @@ def get_current_user(
         )
 
     return db_user
+def get_current_farmer(
+    current_user=Depends(get_current_user),
+):
+    if current_user.role.lower() != "farmer":
+        raise HTTPException(
+            status_code=403,
+            detail="Only farmers are allowed to manage marketplace products.",
+        )
+
+    return current_user
+
+def get_current_admin(
+    current_user=Depends(get_current_user),
+):
+    if current_user.role.lower() != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="Only administrators are allowed to perform this action.",
+        )
+
+    return current_user

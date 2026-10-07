@@ -21,4 +21,8 @@ requests==2.34.2
 Pillow==12.1.0
 openpyxl
 email-validator
-psycopg2-binary
+
+psycopg2-binary==2.9.12
+psycopg[binary]==3.2.10
+
+cloudinary==1.46.2

@@ -198,6 +198,11 @@ class ProductImage(Base):
 
     image_url = Column(String)
 
+    cloudinary_public_id = Column(
+        String,
+        nullable=True,
+    )
+
     product_id = Column(
         Integer,
         ForeignKey("products.id"),

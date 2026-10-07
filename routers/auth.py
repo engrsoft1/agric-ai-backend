@@ -3,10 +3,17 @@ from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
 from sqlalchemy.orm import Session
 
-
+import schemas
 import crud
 import models
-import schemas
+from schemas import (
+    FarmerRegister,
+    BuyerRegister,
+    FarmerLogin,
+    BuyerLogin,
+    AdminLogin,
+)
+
 
 from database import get_db
 
@@ -520,5 +527,66 @@ def get_current_user(
         "status": db_user.status,
 
         "is_verified": db_user.is_verified,
+     }
 
+
+# ============================================================
+# ADMIN LOGIN
+# ============================================================
+
+@router.post("/admin-login")
+def admin_login(
+    data: AdminLogin,
+    db: Session = Depends(get_db),
+):
+    identifier = data.identifier.strip()
+
+    db_user = (
+        db.query(models.User)
+        .filter(
+            (models.User.email == identifier)
+            | (models.User.phone == identifier)
+        )
+        .first()
+    )
+
+    if db_user is None:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid admin credentials.",
+        )
+
+    if db_user.role.lower() != "admin":
+        raise HTTPException(
+            status_code=403,
+            detail="This account does not have administrator privileges.",
+        )
+
+    if not verify_password(
+        data.password,
+        db_user.password_hash,
+    ):
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid admin credentials.",
+        )
+
+    access_token = create_access_token(
+        {
+            "sub": str(db_user.id),
+            "role": db_user.role,
+        }
+    )
+
+    return {
+        "access_token": access_token,
+        "token_type": "bearer",
+        "user": {
+            "id": db_user.id,
+            "full_name": db_user.full_name,
+            "email": db_user.email,
+            "phone": db_user.phone,
+            "role": db_user.role,
+        },
     }
+

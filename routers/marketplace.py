@@ -1,6 +1,10 @@
 import os
-import shutil
 import uuid
+
+import cloudinary
+import cloudinary.uploader
+
+from dotenv import load_dotenv
 
 from fastapi import (
     APIRouter,
@@ -15,7 +19,34 @@ from sqlalchemy.orm import Session
 
 from database import SessionLocal
 from models import Product, ProductImage
-from utils.auth import get_current_user
+from utils.auth import (
+    get_current_user,
+    get_current_farmer,
+    get_current_admin,
+)
+
+
+# ==========================================================
+# LOAD ENVIRONMENT VARIABLES
+# ==========================================================
+
+load_dotenv()
+
+
+# ==========================================================
+# CLOUDINARY CONFIGURATION
+# ==========================================================
+
+cloudinary.config(
+    cloud_name=os.getenv("CLOUDINARY_CLOUD_NAME"),
+    api_key=os.getenv("CLOUDINARY_API_KEY"),
+    api_secret=os.getenv("CLOUDINARY_API_SECRET"),
+)
+
+
+# ==========================================================
+# ROUTER
+# ==========================================================
 
 router = APIRouter(
     prefix="/marketplace",
@@ -23,13 +54,9 @@ router = APIRouter(
 )
 
 
-UPLOAD_FOLDER = "uploads/products"
-
-os.makedirs(
-    UPLOAD_FOLDER,
-    exist_ok=True,
-)
-
+# ==========================================================
+# DATABASE
+# ==========================================================
 
 def get_db():
     db = SessionLocal()
@@ -39,7 +66,6 @@ def get_db():
 
     finally:
         db.close()
-
 
 
 # ==========================================================
@@ -66,8 +92,12 @@ def get_product(
             detail="Product not found.",
         )
 
-    # Clean phone number for WhatsApp
+    # ------------------------------------------------------
+    # CLEAN PHONE NUMBER FOR WHATSAPP
+    # ------------------------------------------------------
+
     whatsapp_number = product.whatsapp or ""
+
     whatsapp_number = (
         whatsapp_number
         .replace("+", "")
@@ -78,13 +108,28 @@ def get_product(
     )
 
     # Nigeria-specific handling:
-    # 080234567891 -> 23480234567891
+    #
+    # 08023456789
+    #       ↓
+    # 2348023456789
+    #
+    # Also supports numbers already beginning with 234.
+
     if whatsapp_number.startswith("0"):
-        whatsapp_number = "234" + whatsapp_number[1:]
+
+        whatsapp_number = (
+            "234" + whatsapp_number[1:]
+        )
+
     elif whatsapp_number.startswith("234"):
+
         pass
+
     elif len(whatsapp_number) == 11:
-     whatsapp_number = "234" + whatsapp_number
+
+        whatsapp_number = (
+            "234" + whatsapp_number
+        )
 
     whatsapp_url = (
         f"https://wa.me/{whatsapp_number}"
@@ -92,12 +137,19 @@ def get_product(
         else None
     )
 
-    # Phone dialing URL
+    # ------------------------------------------------------
+    # PHONE URL
+    # ------------------------------------------------------
+
     phone_url = (
         f"tel:{product.phone}"
         if product.phone
         else None
     )
+
+    # ------------------------------------------------------
+    # RESPONSE
+    # ------------------------------------------------------
 
     return {
         "id": product.id,
@@ -108,48 +160,63 @@ def get_product(
         "quantity": product.quantity,
         "unit": product.unit,
         "location": product.location,
+
         "phone": product.phone,
         "whatsapp": product.whatsapp,
+
         "phone_url": phone_url,
         "whatsapp_url": whatsapp_url,
+
         "status": product.status,
         "owner_id": product.owner_id,
+
         "created_at": product.created_at,
         "updated_at": product.updated_at,
 
+        # --------------------------------------------------
+        # CLOUDINARY IMAGE URLS
+        # --------------------------------------------------
+
         "images": [
-            f"/uploads/products/{os.path.basename(image.image_url)}"
+            image.image_url
             for image in product.images
             if image.image_url
         ],
     }
 
+
 # ==========================================================
 # GET ALL AVAILABLE PRODUCTS
-# SEARCH + FILTER + PAGINATION
+# SEARCH + FILTER + PAGINATION + SORTING
 # ==========================================================
+
 @router.get("/products")
 def get_products(
     search: str | None = None,
     category: str | None = None,
     location: str | None = None,
+
     page: int = 1,
     limit: int = 20,
+
     sort: str = "newest",
 
     db: Session = Depends(get_db),
 ):
+
     # ------------------------------------------------------
     # VALIDATE PAGINATION
     # ------------------------------------------------------
 
     if page < 1:
+
         raise HTTPException(
             status_code=400,
             detail="Page must be greater than or equal to 1.",
         )
 
     if limit < 1 or limit > 100:
+
         raise HTTPException(
             status_code=400,
             detail="Limit must be between 1 and 100.",
@@ -161,7 +228,9 @@ def get_products(
 
     query = (
         db.query(Product)
-        .filter(Product.status == "available")
+        .filter(
+            Product.status == "available"
+        )
     )
 
     # ------------------------------------------------------
@@ -169,13 +238,19 @@ def get_products(
     # ------------------------------------------------------
 
     if search:
-        search_term = f"%{search.strip()}%"
+
+        search_term = (
+            f"%{search.strip()}%"
+        )
 
         query = query.filter(
             Product.title.ilike(search_term)
-            | Product.description.ilike(search_term)
-            | Product.category.ilike(search_term)
-            | Product.location.ilike(search_term)
+            |
+            Product.description.ilike(search_term)
+            |
+            Product.category.ilike(search_term)
+            |
+            Product.location.ilike(search_term)
         )
 
     # ------------------------------------------------------
@@ -183,6 +258,7 @@ def get_products(
     # ------------------------------------------------------
 
     if category:
+
         query = query.filter(
             Product.category.ilike(
                 category.strip()
@@ -194,6 +270,7 @@ def get_products(
     # ------------------------------------------------------
 
     if location:
+
         query = query.filter(
             Product.location.ilike(
                 location.strip()
@@ -207,12 +284,6 @@ def get_products(
     total = query.count()
 
     # ------------------------------------------------------
-    # PAGINATION
-    # ------------------------------------------------------
-
-    offset = (page - 1) * limit
-
-      # ------------------------------------------------------
     # SORTING
     # ------------------------------------------------------
 
@@ -250,6 +321,14 @@ def get_products(
             ),
         )
 
+    # ------------------------------------------------------
+    # PAGINATION
+    # ------------------------------------------------------
+
+    offset = (
+        (page - 1) * limit
+    )
+
     products = (
         query
         .offset(offset)
@@ -266,33 +345,53 @@ def get_products(
     for product in products:
 
         product_list.append({
+
             "id": product.id,
+
             "title": product.title,
+
             "description": product.description,
+
             "category": product.category,
+
             "price": product.price,
+
             "quantity": product.quantity,
+
             "unit": product.unit,
+
             "location": product.location,
+
             "phone": product.phone,
+
             "whatsapp": product.whatsapp,
+
             "phone_url": (
                 f"tel:{product.phone}"
                 if product.phone
                 else None
             ),
+
             "whatsapp_url": (
                 f"https://wa.me/{product.whatsapp}"
                 if product.whatsapp
                 else None
             ),
+
             "status": product.status,
+
             "owner_id": product.owner_id,
+
             "created_at": product.created_at,
+
             "updated_at": product.updated_at,
 
+            # --------------------------------------------------
+            # CLOUDINARY IMAGE URLS
+            # --------------------------------------------------
+
             "images": [
-                f"/uploads/products/{os.path.basename(image.image_url)}"
+                image.image_url
                 for image in product.images
                 if image.image_url
             ],
@@ -303,11 +402,17 @@ def get_products(
     # ------------------------------------------------------
 
     return {
+
         "products": product_list,
+
         "pagination": {
+
             "page": page,
+
             "limit": limit,
+
             "total": total,
+
             "pages": (
                 (total + limit - 1) // limit
                 if total > 0
@@ -316,6 +421,7 @@ def get_products(
         },
     }
 
+
 # ==========================================================
 # GET SELLER'S PRODUCTS
 # ==========================================================
@@ -323,44 +429,99 @@ def get_products(
 @router.get("/my-products/{owner_id}")
 def get_my_products(
     owner_id: int,
-    current_user=Depends(get_current_user),
+
+    current_user=Depends(
+        get_current_farmer
+    ),
+
     db: Session = Depends(get_db),
 ):
-    # Only allow a seller to view their own products
+
+    # ------------------------------------------------------
+    # SECURITY CHECK
+    # ------------------------------------------------------
+
     if current_user.id != owner_id:
+
         raise HTTPException(
             status_code=403,
-            detail="You are not allowed to view these products.",
+            detail=(
+                "You are not allowed "
+                "to view these products."
+            ),
         )
+
+    # ------------------------------------------------------
+    # GET PRODUCTS
+    # ------------------------------------------------------
 
     products = (
         db.query(Product)
-        .filter(Product.owner_id == owner_id)
-        .order_by(Product.created_at.desc())
+        .filter(
+            Product.owner_id == owner_id
+        )
+        .order_by(
+            Product.created_at.desc()
+        )
         .all()
     )
+
+    # ------------------------------------------------------
+    # FORMAT PRODUCTS
+    # ------------------------------------------------------
 
     product_list = []
 
     for product in products:
+
         product_list.append({
+
             "id": product.id,
+
             "title": product.title,
+
             "description": product.description,
+
             "category": product.category,
+
             "price": product.price,
+
             "quantity": product.quantity,
+
             "unit": product.unit,
+
             "location": product.location,
+
             "phone": product.phone,
+
             "whatsapp": product.whatsapp,
+
+            "phone_url": (
+                f"tel:{product.phone}"
+                if product.phone
+                else None
+            ),
+
+            "whatsapp_url": (
+                f"https://wa.me/{product.whatsapp}"
+                if product.whatsapp
+                else None
+            ),
+
             "status": product.status,
+
             "owner_id": product.owner_id,
+
             "created_at": product.created_at,
+
             "updated_at": product.updated_at,
 
+            # --------------------------------------------------
+            # CLOUDINARY IMAGE URLS
+            # --------------------------------------------------
+
             "images": [
-                f"/uploads/products/{os.path.basename(image.image_url)}"
+                image.image_url
                 for image in product.images
                 if image.image_url
             ],
@@ -368,38 +529,69 @@ def get_my_products(
 
     return product_list
 
+
 # ==========================================================
 # CREATE PRODUCT
 # ==========================================================
 
 @router.post("/products")
 def create_product(
-    title: str = Form(...),
-    description: str = Form(...),
-    category: str = Form(...),
-    price: float = Form(...),
-    quantity: int = Form(...),
-    unit: str = Form(...),
-    location: str = Form(...),
-    phone: str = Form(...),
-    whatsapp: str = Form(...),
-    images: list[UploadFile] = File(...),
 
-    current_user = Depends(get_current_user),
+    title: str = Form(...),
+
+    description: str = Form(...),
+
+    category: str = Form(...),
+
+    price: float = Form(...),
+
+    quantity: int = Form(...),
+
+    unit: str = Form(...),
+
+    location: str = Form(...),
+
+    phone: str = Form(...),
+
+    whatsapp: str = Form(...),
+
+    images: list[UploadFile] = File(
+    ...,
+    description="Upload one or more product images"
+),
+    current_user=Depends(
+        get_current_farmer
+    ),
 
     db: Session = Depends(get_db),
 ):
+
+    # ======================================================
+    # CREATE PRODUCT
+    # ======================================================
+
     product = Product(
+
         title=title,
+
         description=description,
+
         category=category,
+
         price=price,
+
         quantity=quantity,
+
         unit=unit,
+
         location=location,
+
         phone=phone,
+
         whatsapp=whatsapp,
+
         owner_id=current_user.id,
+
         status="available",
     )
 
@@ -409,53 +601,121 @@ def create_product(
 
     db.refresh(product)
 
+    # ======================================================
+    # UPLOAD IMAGES TO CLOUDINARY
+    # ======================================================
 
-    # ------------------------------------------------------
-    # SAVE PRODUCT IMAGES
-    # ------------------------------------------------------
+    uploaded_images = []
 
-    for image in images:
+    try:
 
-        if not image.filename:
-            continue
+        for image in images:
 
-        extension = os.path.splitext(
-            image.filename
-        )[1]
+            # --------------------------------------------------
+            # SKIP EMPTY FILES
+            # --------------------------------------------------
 
-        filename = (
-            f"{uuid.uuid4().hex}{extension}"
-        )
+            if not image.filename:
 
-        filepath = os.path.join(
-            UPLOAD_FOLDER,
-            filename,
-        )
+                continue
 
-        with open(
-            filepath,
-            "wb",
-        ) as buffer:
+            # --------------------------------------------------
+            # UPLOAD TO CLOUDINARY
+            # --------------------------------------------------
 
-            shutil.copyfileobj(
-                image.file,
-                buffer,
+            upload_result = (
+                cloudinary.uploader.upload(
+
+                    image.file,
+
+                    folder="agric-ai/products",
+
+                    public_id=(
+                        f"product_{product.id}_"
+                        f"{uuid.uuid4().hex}"
+                    ),
+
+                    resource_type="image",
+                )
             )
 
+            # --------------------------------------------------
+            # GET CLOUDINARY DATA
+            # --------------------------------------------------
 
-        db.add(
-            ProductImage(
-                image_url=filepath,
+            image_url = upload_result.get(
+                "secure_url"
+            )
+
+            cloudinary_public_id = upload_result.get(
+                "public_id"
+            )
+
+            if not image_url:
+
+                raise Exception(
+                    "Cloudinary did not return "
+                    "a secure image URL."
+                )
+
+            if not cloudinary_public_id:
+
+                raise Exception(
+                    "Cloudinary did not return "
+                    "a public ID."
+                )
+
+            # --------------------------------------------------
+            # SAVE IMAGE INFORMATION
+            # --------------------------------------------------
+
+            product_image = ProductImage(
+
+                image_url=image_url,
+
+                cloudinary_public_id=(
+                    cloudinary_public_id
+                ),
+
                 product_id=product.id,
             )
+
+            db.add(product_image)
+            uploaded_images.append(
+                image_url
+            )
+
+               # ------------------------------------------------------
+        # COMMIT IMAGE RECORDS
+        # ------------------------------------------------------
+
+        db.commit()
+
+    except Exception as e:
+        db.rollback()
+
+        raise HTTPException(
+            status_code=500,
+            detail=(
+                "Product was created but image "
+                "upload failed: "
+                f"{str(e)}"
+            ),
         )
 
-
-    db.commit()
+    # ======================================================
+    # RESPONSE
+    # ======================================================
 
     return {
-        "message": "Product created successfully",
+
+        "message": (
+            "Product created successfully"
+        ),
+
         "product_id": product.id,
+
+        "images": uploaded_images,
     }
 
 
@@ -465,62 +725,105 @@ def create_product(
 
 @router.put("/products/{product_id}")
 def update_product(
+
     product_id: int,
-    
+
     title: str = Form(...),
+
     description: str = Form(...),
+
     category: str = Form(...),
+
     price: float = Form(...),
+
     quantity: int = Form(...),
+
     unit: str = Form(...),
+
     location: str = Form(...),
+
     phone: str = Form(...),
+
     whatsapp: str = Form(...),
 
-    current_user=Depends(get_current_user),
+    current_user=Depends(
+        get_current_farmer
+    ),
 
     db: Session = Depends(get_db),
 ):
 
+    # ------------------------------------------------------
+    # FIND PRODUCT
+    # ------------------------------------------------------
+
     product = (
         db.query(Product)
         .filter(
+
             Product.id == product_id,
-            Product.owner_id == current_user.id,
+
+            Product.owner_id ==
+            current_user.id,
+
         )
         .first()
     )
 
-
     if not product:
 
         raise HTTPException(
+
             status_code=404,
-            detail="Product not found or does not belong to this seller.",
+
+            detail=(
+                "Product not found or does not "
+                "belong to this seller."
+            ),
         )
 
+    # ------------------------------------------------------
+    # UPDATE PRODUCT
+    # ------------------------------------------------------
 
     product.title = title
+
     product.description = description
+
     product.category = category
+
     product.price = price
+
     product.quantity = quantity
+
     product.unit = unit
+
     product.location = location
+
     product.phone = phone
+
     product.whatsapp = whatsapp
 
+    # ------------------------------------------------------
+    # SAVE
+    # ------------------------------------------------------
 
     db.commit()
 
     db.refresh(product)
 
+    # ------------------------------------------------------
+    # RESPONSE
+    # ------------------------------------------------------
 
     return {
-        "message": "Product updated successfully",
+
+        "message": (
+            "Product updated successfully"
+        ),
+
         "product_id": product.id,
     }
-
 
 # ==========================================================
 # DELETE PRODUCT
@@ -529,9 +832,15 @@ def update_product(
 @router.delete("/products/{product_id}")
 def delete_product(
     product_id: int,
-    current_user=Depends(get_current_user),
+    current_user=Depends(
+        get_current_farmer
+    ),
     db: Session = Depends(get_db),
 ):
+
+    # ------------------------------------------------------
+    # FIND PRODUCT
+    # ------------------------------------------------------
 
     product = (
         db.query(Product)
@@ -542,39 +851,202 @@ def delete_product(
         .first()
     )
 
-
     if not product:
-
         raise HTTPException(
             status_code=404,
-            detail="Product not found or does not belong to this seller.",
+            detail="Product not found or you are not the owner.",
         )
 
+    # ------------------------------------------------------
+    # GET PRODUCT IMAGES
+    # ------------------------------------------------------
+
+    product_images = (
+        db.query(ProductImage)
+        .filter(
+            ProductImage.product_id == product.id
+        )
+        .all()
+    )
 
     # ------------------------------------------------------
-    # DELETE IMAGE FILES
+    # DELETE IMAGES FROM CLOUDINARY
     # ------------------------------------------------------
 
-    for image in product.images:
+    cloudinary_errors = []
 
-        if image.image_url and os.path.exists(
-            image.image_url
-        ):
+    for product_image in product_images:
 
-            try:
-                os.remove(
-                    image.image_url
-                )
+        public_id = (
+            product_image.cloudinary_public_id
+        )
 
-            except OSError:
-                pass
+        # Older images may not have a public ID
+        if not public_id:
+            continue
 
+        try:
+
+            result = cloudinary.uploader.destroy(
+                public_id,
+                resource_type="image",
+            )
+
+            if result.get("result") not in [
+                "ok",
+                "not found",
+            ]:
+
+                cloudinary_errors.append({
+                    "public_id": public_id,
+                    "result": result,
+                })
+
+        except Exception as e:
+
+            cloudinary_errors.append({
+                "public_id": public_id,
+                "error": str(e),
+            })
+
+    # ------------------------------------------------------
+    # DELETE PRODUCT FROM DATABASE
+    # ------------------------------------------------------
 
     db.delete(product)
 
     db.commit()
 
+    # ------------------------------------------------------
+    # RESPONSE
+    # ------------------------------------------------------
 
-    return {
-        "message": "Product deleted successfully",
+    response = {
+        "message": "Product deleted successfully.",
+        "product_id": product_id,
     }
+
+    # ------------------------------------------------------
+    # CLOUDINARY WARNINGS
+    # ------------------------------------------------------
+
+    if cloudinary_errors:
+        response["cloudinary_warnings"] = cloudinary_errors
+
+    return response
+
+
+# ==========================================================
+# ADMIN DELETE ANY PRODUCT
+# ==========================================================
+
+@router.delete("/admin/products/{product_id}")
+def admin_delete_product(
+    product_id: int,
+    current_user=Depends(
+        get_current_admin
+    ),
+    db: Session = Depends(get_db),
+):
+
+    # ------------------------------------------------------
+    # FIND PRODUCT
+    # ------------------------------------------------------
+
+    product = (
+        db.query(Product)
+        .filter(
+            Product.id == product_id
+        )
+        .first()
+    )
+
+    if not product:
+        raise HTTPException(
+            status_code=404,
+            detail="Product not found.",
+        )
+
+    # ------------------------------------------------------
+    # GET PRODUCT IMAGES
+    # ------------------------------------------------------
+
+    product_images = (
+        db.query(ProductImage)
+        .filter(
+            ProductImage.product_id == product.id
+        )
+        .all()
+    )
+
+    # ------------------------------------------------------
+    # DELETE IMAGES FROM CLOUDINARY
+    # ------------------------------------------------------
+
+    cloudinary_errors = []
+
+    for product_image in product_images:
+
+        public_id = (
+            product_image.cloudinary_public_id
+        )
+
+        # Older images may not have a public ID
+        if not public_id:
+            continue
+
+        try:
+
+            result = cloudinary.uploader.destroy(
+                public_id,
+                resource_type="image",
+            )
+
+            if result.get("result") not in [
+                "ok",
+                "not found",
+            ]:
+
+                cloudinary_errors.append({
+                    "public_id": public_id,
+                    "result": result,
+                })
+
+        except Exception as e:
+
+            cloudinary_errors.append({
+                "public_id": public_id,
+                "error": str(e),
+            })
+
+    # ------------------------------------------------------
+    # DELETE PRODUCT FROM DATABASE
+    # ------------------------------------------------------
+
+    db.delete(product)
+
+    db.commit()
+
+    # ------------------------------------------------------
+    # RESPONSE
+    # ------------------------------------------------------
+
+    response = {
+        "message": (
+            "Product deleted successfully by admin."
+        ),
+        "product_id": product_id,
+        "deleted_by_admin": current_user.id,
+    }
+
+    # ------------------------------------------------------
+    # CLOUDINARY WARNINGS
+    # ------------------------------------------------------
+
+    if cloudinary_errors:
+        response["cloudinary_warnings"] = (
+            cloudinary_errors
+        )
+
+    return response
+
