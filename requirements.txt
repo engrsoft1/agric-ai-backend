@@ -26,3 +26,4 @@ psycopg2-binary==2.9.12
 psycopg[binary]==3.2.10
 
 cloudinary==1.46.2
+alembic==1.18.5

@@ -212,3 +212,61 @@ class ProductImage(Base):
         "Product",
         back_populates="images",
     )
+# ============================================================
+# APPLICATION ACTIVITY AUDIT LOG
+# ============================================================
+
+class AdminAuditLog(Base):
+    __tablename__ = "admin_audit_logs"
+
+    id = Column(Integer, primary_key=True, index=True)
+
+    # User or administrator who performed the activity.
+    # Nullable because some activities, such as failed logins,
+    # may occur before a user is authenticated.
+    actor_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+
+    # User account affected by the activity, if applicable.
+    target_user_id = Column(
+        Integer,
+        ForeignKey("users.id"),
+        nullable=True,
+        index=True,
+    )
+
+    # Category of activity, such as AUTHENTICATION or MARKETPLACE.
+    category = Column(String, nullable=False, index=True)
+
+    # Specific activity performed.
+    # Examples: USER_LOGIN, PRODUCT_CREATED, DISEASE_SCAN_COMPLETED.
+    action = Column(String, nullable=False, index=True)
+
+    # Whether the activity succeeded or failed.
+    result = Column(
+        String,
+        nullable=False,
+        default="SUCCESS",
+        index=True,
+    )
+
+    # Additional information about the activity.
+    details = Column(Text, nullable=True)
+
+    # Request source information, when available.
+    ip_address = Column(String, nullable=True)
+    user_agent = Column(String, nullable=True)
+    phone = Column(String, nullable=True, index=True)
+    farmer_id = Column(String, nullable=True, index=True)
+
+    # Date and time the activity was recorded.
+    created_at = Column(
+        DateTime,
+        default=datetime.utcnow,
+        nullable=False,
+        index=True,
+    )

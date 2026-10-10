@@ -67,7 +67,17 @@ class BuyerLogin(BaseModel):
 # ============================================================
 
 class AdminLogin(BaseModel):
-
-    identifier: str   # Admin email or phone number
-
+    identifier: str  # Admin email or phone number
     password: str
+
+
+# ============================================================
+# ADMIN REGISTRATION
+# ============================================================
+
+class AdminRegister(BaseModel):
+    full_name: str
+    email: EmailStr
+    phone: str
+    password: str
+    confirm_password: str

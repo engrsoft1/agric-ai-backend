@@ -1,4 +1,4 @@
-﻿.env
+.env
 __pycache__/
 *.pyc
 *.pyo
@@ -13,3 +13,6 @@ env/
 *.sqlite3
 uploads/
 products/
+test.jpg
+test_cloudinary.py
+create_admin.py
